@@ -513,3 +513,31 @@ async fn ingest_body_over_limit_returns_413() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn clear_unknown_endpoint_returns_404() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/endpoints/{}/clear", uuid::Uuid::new_v4()))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_unknown_endpoint_returns_404() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/endpoints/{}/delete", uuid::Uuid::new_v4()))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

@@ -118,7 +118,9 @@ pub async fn delete_endpoint(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let _ = db::delete_endpoint(&state.pool, id).await?;
+    if !db::delete_endpoint(&state.pool, id).await? {
+        return Err(AppError::NotFound);
+    }
     Ok((StatusCode::SEE_OTHER, [("location", "/")]))
 }
 
@@ -144,7 +146,8 @@ pub async fn endpoint_detail(
     let endpoint = db::get_endpoint(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound)?;
-    let summaries = db::list_webhooks_for_endpoint(&state.pool, id, 250).await?;
+    let summaries =
+        db::list_webhooks_for_endpoint(&state.pool, id, state.retain_per_endpoint).await?;
     let host = host_from_headers(&headers);
     render(EndpointPageTemplate {
         endpoint,
@@ -160,7 +163,8 @@ pub async fn endpoint_list_partial(
     if db::get_endpoint(&state.pool, id).await?.is_none() {
         return Err(AppError::NotFound);
     }
-    let summaries = db::list_webhooks_for_endpoint(&state.pool, id, 250).await?;
+    let summaries =
+        db::list_webhooks_for_endpoint(&state.pool, id, state.retain_per_endpoint).await?;
     render(ListPartialTemplate {
         rows: rows(summaries),
     })
@@ -170,6 +174,9 @@ pub async fn clear_endpoint(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Redirect, AppError> {
+    if db::get_endpoint(&state.pool, id).await?.is_none() {
+        return Err(AppError::NotFound);
+    }
     db::clear_endpoint(&state.pool, id).await?;
     Ok(Redirect::to(&format!("/endpoints/{id}")))
 }
