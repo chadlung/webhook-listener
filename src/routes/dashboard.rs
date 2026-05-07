@@ -293,3 +293,13 @@ pub async fn webhook_detail(
         body,
     })
 }
+
+pub async fn delete_webhook(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Redirect, AppError> {
+    match db::delete_webhook(&state.pool, id).await? {
+        Some(endpoint_id) => Ok(Redirect::to(&format!("/endpoints/{endpoint_id}"))),
+        None => Err(AppError::NotFound),
+    }
+}

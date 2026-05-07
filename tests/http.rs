@@ -420,3 +420,54 @@ async fn webhook_detail_escapes_html_in_body() {
     // It should appear in escaped form.
     assert!(s.contains("&lt;script&gt;"), "expected escaped form");
 }
+
+#[tokio::test]
+async fn delete_single_webhook_redirects_to_endpoint_detail() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    let id = db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "127.0.0.1",
+            headers_json: "{}",
+            body: b"x",
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state.clone(), "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/webhooks/view/{}/delete", id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status().is_redirection());
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    assert_eq!(location, format!("/endpoints/{}", endpoint.id));
+    let list = db::list_webhooks_for_endpoint(&state.pool, endpoint.id, 1000)
+        .await
+        .unwrap();
+    assert!(list.is_empty());
+}
+
+#[tokio::test]
+async fn delete_unknown_webhook_returns_404() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri("/webhooks/view/999999/delete")
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

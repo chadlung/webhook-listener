@@ -24,6 +24,7 @@ pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router 
         .route("/endpoints/{id}/clear", post(dashboard::clear_endpoint))
         .route("/endpoints/{id}/delete", post(dashboard::delete_endpoint))
         .route("/webhooks/view/{id}", get(dashboard::webhook_detail))
+        .route("/webhooks/view/{id}/delete", post(dashboard::delete_webhook))
         .nest_service("/static", ServeDir::new("static"))
         .layer(
             #[allow(deprecated)]
