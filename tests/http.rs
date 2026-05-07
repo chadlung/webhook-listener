@@ -227,3 +227,75 @@ async fn endpoint_list_partial_for_unknown_endpoint_returns_404() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn clear_endpoint_keeps_endpoint_drops_webhooks() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "127.0.0.1",
+            headers_json: "{}",
+            body: b"x",
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state.clone(), "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/endpoints/{}/clear", endpoint.id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status().is_redirection());
+    let list = db::list_webhooks_for_endpoint(&state.pool, endpoint.id, 1000)
+        .await
+        .unwrap();
+    assert!(list.is_empty());
+    assert!(db::get_endpoint(&state.pool, endpoint.id).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn delete_endpoint_removes_endpoint_and_webhooks_via_cascade() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "127.0.0.1",
+            headers_json: "{}",
+            body: b"x",
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state.clone(), "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/endpoints/{}/delete", endpoint.id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status().is_redirection());
+    assert!(db::get_endpoint(&state.pool, endpoint.id).await.unwrap().is_none());
+    let list = db::list_webhooks_for_endpoint(&state.pool, endpoint.id, 1000)
+        .await
+        .unwrap();
+    assert!(list.is_empty());
+}
