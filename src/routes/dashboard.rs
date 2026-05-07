@@ -166,3 +166,130 @@ pub async fn clear_endpoint(
     db::clear_endpoint(&state.pool, id).await?;
     Ok(Redirect::to(&format!("/endpoints/{id}")))
 }
+
+struct DecodedBody {
+    pretty: Option<String>,
+    text: Option<String>,
+    hex: Option<String>,
+    label: String,
+}
+
+fn decode_body(body: &[u8], headers_json: &str) -> DecodedBody {
+    let content_type = serde_json::from_str::<serde_json::Value>(headers_json)
+        .ok()
+        .and_then(|v| {
+            v.get("content-type")
+                .and_then(|c| c.get(0))
+                .and_then(|s| s.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+
+    let is_json = content_type.contains("application/json")
+        || content_type.contains("+json");
+
+    match std::str::from_utf8(body) {
+        Ok(text) => {
+            if is_json
+                && let Ok(v) = serde_json::from_str::<serde_json::Value>(text)
+                && let Ok(pretty) = serde_json::to_string_pretty(&v)
+            {
+                return DecodedBody {
+                    pretty: Some(pretty),
+                    text: None,
+                    hex: None,
+                    label: "JSON".into(),
+                };
+            }
+            DecodedBody {
+                pretty: None,
+                text: Some(text.to_string()),
+                hex: None,
+                label: if is_json { "JSON (unparsed)".into() } else { "text".into() },
+            }
+        }
+        Err(_) => {
+            let preview = body.iter().take(4096).copied().collect::<Vec<_>>();
+            let hex = preview
+                .chunks(16)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            DecodedBody {
+                pretty: None,
+                text: None,
+                hex: Some(hex),
+                label: format!("binary ({} B, first 4 KiB shown)", body.len()),
+            }
+        }
+    }
+}
+
+fn parse_headers(headers_json: &str) -> Vec<(String, String)> {
+    let v: serde_json::Value = match serde_json::from_str(headers_json) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+    let map = match v.as_object() {
+        Some(m) => m,
+        None => return vec![],
+    };
+    let mut out = Vec::new();
+    for (name, values) in map {
+        if let Some(arr) = values.as_array() {
+            for val in arr {
+                if let Some(s) = val.as_str() {
+                    out.push((name.clone(), s.to_string()));
+                }
+            }
+        }
+    }
+    out
+}
+
+#[derive(Template)]
+#[template(path = "webhook_detail.html")]
+struct WebhookDetailTemplate {
+    webhook_id: i64,
+    endpoint_id: uuid::Uuid,
+    endpoint_label: String,
+    received_at: String,
+    method: String,
+    path: String,
+    query: String,
+    source_ip: String,
+    headers: Vec<(String, String)>,
+    body_size: i64,
+    body: DecodedBody,
+}
+
+pub async fn webhook_detail(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Response, AppError> {
+    let webhook = db::get_webhook(&state.pool, id).await?.ok_or(AppError::NotFound)?;
+    let endpoint = db::get_endpoint(&state.pool, webhook.endpoint_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let body = decode_body(&webhook.body, &webhook.headers_json);
+    let headers = parse_headers(&webhook.headers_json);
+    render(WebhookDetailTemplate {
+        webhook_id: webhook.id,
+        endpoint_id: endpoint.id,
+        endpoint_label: endpoint.label,
+        received_at: fmt_ms(webhook.received_at),
+        method: webhook.method,
+        path: webhook.path,
+        query: webhook.query,
+        source_ip: webhook.source_ip,
+        headers,
+        body_size: webhook.body_size,
+        body,
+    })
+}

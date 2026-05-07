@@ -299,3 +299,124 @@ async fn delete_endpoint_removes_endpoint_and_webhooks_via_cascade() {
         .unwrap();
     assert!(list.is_empty());
 }
+
+#[tokio::test]
+async fn webhook_detail_renders_with_pretty_json_body() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    let id = db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "k=v",
+            source_ip: "1.2.3.4",
+            headers_json: r#"{"content-type":["application/json"]}"#,
+            body: br#"{"a":1,"b":[2,3]}"#,
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/webhooks/view/{}", id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let s = std::str::from_utf8(&body).unwrap();
+    assert!(s.contains("Webhook #"));
+    assert!(s.contains("&quot;a&quot;: 1"), "expected pretty-printed JSON (HTML-escaped): {s}");
+    assert!(s.contains("content-type"));
+    assert!(s.contains("k=v"));
+}
+
+#[tokio::test]
+async fn webhook_detail_falls_back_to_hex_for_non_utf8_body() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    let id = db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "1.2.3.4",
+            headers_json: "{}",
+            body: &[0xff, 0xfe, 0xfd],
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/webhooks/view/{}", id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let s = std::str::from_utf8(&body).unwrap();
+    assert!(s.contains("ff fe fd"), "expected hex output: {s}");
+    assert!(s.contains("binary"));
+}
+
+#[tokio::test]
+async fn webhook_detail_for_unknown_id_returns_404() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri("/webhooks/view/999999")
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn webhook_detail_escapes_html_in_body() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "E", "").await.unwrap();
+    let id = db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "1.2.3.4",
+            headers_json: r#"{"content-type":["application/json"]}"#,
+            body: br#"{"x":"<script>alert(1)</script>"}"#,
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/webhooks/view/{}", id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let s = std::str::from_utf8(&body).unwrap();
+    // The literal script tag must NOT appear in the rendered HTML.
+    assert!(
+        !s.contains("<script>alert(1)</script>"),
+        "XSS: unescaped script tag in dashboard"
+    );
+    // It should appear in escaped form.
+    assert!(s.contains("&lt;script&gt;"), "expected escaped form");
+}
