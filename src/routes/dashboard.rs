@@ -89,7 +89,10 @@ pub async fn index(
         .unwrap_or("localhost")
         .to_string();
     let base_url = format!("http://{host}");
-    render(IndexTemplate { endpoints, base_url })
+    render(IndexTemplate {
+        endpoints,
+        base_url,
+    })
 }
 
 #[derive(Deserialize)]
@@ -138,7 +141,9 @@ pub async fn endpoint_detail(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let endpoint = db::get_endpoint(&state.pool, id).await?.ok_or(AppError::NotFound)?;
+    let endpoint = db::get_endpoint(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let summaries = db::list_webhooks_for_endpoint(&state.pool, id, 250).await?;
     let host = host_from_headers(&headers);
     render(EndpointPageTemplate {
@@ -156,7 +161,9 @@ pub async fn endpoint_list_partial(
         return Err(AppError::NotFound);
     }
     let summaries = db::list_webhooks_for_endpoint(&state.pool, id, 250).await?;
-    render(ListPartialTemplate { rows: rows(summaries) })
+    render(ListPartialTemplate {
+        rows: rows(summaries),
+    })
 }
 
 pub async fn clear_endpoint(
@@ -185,8 +192,7 @@ fn decode_body(body: &[u8], headers_json: &str) -> DecodedBody {
         })
         .unwrap_or_default();
 
-    let is_json = content_type.contains("application/json")
-        || content_type.contains("+json");
+    let is_json = content_type.contains("application/json") || content_type.contains("+json");
 
     match std::str::from_utf8(body) {
         Ok(text) => {
@@ -205,7 +211,11 @@ fn decode_body(body: &[u8], headers_json: &str) -> DecodedBody {
                 pretty: None,
                 text: Some(text.to_string()),
                 hex: None,
-                label: if is_json { "JSON (unparsed)".into() } else { "text".into() },
+                label: if is_json {
+                    "JSON (unparsed)".into()
+                } else {
+                    "text".into()
+                },
             }
         }
         Err(_) => {
@@ -273,7 +283,9 @@ pub async fn webhook_detail(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Response, AppError> {
-    let webhook = db::get_webhook(&state.pool, id).await?.ok_or(AppError::NotFound)?;
+    let webhook = db::get_webhook(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let endpoint = db::get_endpoint(&state.pool, webhook.endpoint_id)
         .await?
         .ok_or(AppError::NotFound)?;

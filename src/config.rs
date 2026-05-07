@@ -39,10 +39,7 @@ fn require_env(name: &'static str) -> Result<String, ConfigError> {
     }
 }
 
-fn optional_usize_env(
-    name: &'static str,
-    default: usize,
-) -> Result<usize, ConfigError> {
+fn optional_usize_env(name: &'static str, default: usize) -> Result<usize, ConfigError> {
     match std::env::var(name) {
         Ok(v) if !v.is_empty() => v.parse::<usize>().map_err(|e| ConfigError::InvalidEnv {
             var: name,
@@ -161,7 +158,10 @@ mod tests {
         unsafe { std::env::set_var("WEBHOOK_RETAIN_PER_ENDPOINT", "0") };
         let err = Config::from_args_and_env(args()).unwrap_err();
         match err {
-            ConfigError::InvalidEnv { var: "WEBHOOK_RETAIN_PER_ENDPOINT", .. } => {}
+            ConfigError::InvalidEnv {
+                var: "WEBHOOK_RETAIN_PER_ENDPOINT",
+                ..
+            } => {}
             other => panic!("unexpected: {other:?}"),
         }
     }

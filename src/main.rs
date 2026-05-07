@@ -26,7 +26,9 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::open_pool(&config.db_path)
         .await
         .with_context(|| format!("opening database at {}", config.db_path))?;
-    db::run_migrations(&pool).await.context("running migrations")?;
+    db::run_migrations(&pool)
+        .await
+        .context("running migrations")?;
 
     let state = Arc::new(AppState {
         pool,

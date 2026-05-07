@@ -1,4 +1,4 @@
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use std::net::SocketAddr;
@@ -48,7 +48,10 @@ async fn ingest_post_to_existing_endpoint_stores_webhook() {
         .await
         .unwrap();
     assert_eq!(list.len(), 1);
-    let saved = db::get_webhook(&state.pool, list[0].id).await.unwrap().unwrap();
+    let saved = db::get_webhook(&state.pool, list[0].id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(saved.method, "POST");
     assert_eq!(saved.path, format!("/webhooks/{}", endpoint.id));
     assert_eq!(saved.query, "foo=bar");
@@ -97,7 +100,7 @@ async fn ingest_accepts_get_method_too() {
 // --- Dashboard tests ---
 
 fn auth_header(user: &str, pass: &str) -> String {
-    use base64::{engine::general_purpose, Engine as _};
+    use base64::{Engine as _, engine::general_purpose};
     let raw = format!("{user}:{pass}");
     format!("Basic {}", general_purpose::STANDARD.encode(raw))
 }
@@ -262,7 +265,12 @@ async fn clear_endpoint_keeps_endpoint_drops_webhooks() {
         .await
         .unwrap();
     assert!(list.is_empty());
-    assert!(db::get_endpoint(&state.pool, endpoint.id).await.unwrap().is_some());
+    assert!(
+        db::get_endpoint(&state.pool, endpoint.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -294,7 +302,12 @@ async fn delete_endpoint_removes_endpoint_and_webhooks_via_cascade() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert!(resp.status().is_redirection());
-    assert!(db::get_endpoint(&state.pool, endpoint.id).await.unwrap().is_none());
+    assert!(
+        db::get_endpoint(&state.pool, endpoint.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let list = db::list_webhooks_for_endpoint(&state.pool, endpoint.id, 1000)
         .await
         .unwrap();
@@ -332,7 +345,10 @@ async fn webhook_detail_renders_with_pretty_json_body() {
     let body = to_bytes(resp.into_body(), 65536).await.unwrap();
     let s = std::str::from_utf8(&body).unwrap();
     assert!(s.contains("Webhook #"));
-    assert!(s.contains("&quot;a&quot;: 1"), "expected pretty-printed JSON (HTML-escaped): {s}");
+    assert!(
+        s.contains("&quot;a&quot;: 1"),
+        "expected pretty-printed JSON (HTML-escaped): {s}"
+    );
     assert!(s.contains("content-type"));
     assert!(s.contains("k=v"));
 }
@@ -482,7 +498,9 @@ async fn ingest_body_over_limit_returns_413() {
         retain_per_endpoint: 250,
         body_limit_bytes: 64,
     });
-    let endpoint = db::create_endpoint(&small_state.pool, "E", "").await.unwrap();
+    let endpoint = db::create_endpoint(&small_state.pool, "E", "")
+        .await
+        .unwrap();
     let app = build_router(small_state, "u", "p");
     let big = vec![b'x'; 200];
     let req = with_connect_info(

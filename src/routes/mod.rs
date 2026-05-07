@@ -2,8 +2,8 @@ pub mod dashboard;
 pub mod ingest;
 
 use crate::state::AppState;
-use axum::routing::{any, get, post};
 use axum::Router;
+use axum::routing::{any, get, post};
 use std::sync::Arc;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -25,11 +25,17 @@ pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router 
         .route("/", get(dashboard::index))
         .route("/endpoints", post(dashboard::create_endpoint))
         .route("/endpoints/{id}", get(dashboard::endpoint_detail))
-        .route("/endpoints/{id}/list", get(dashboard::endpoint_list_partial))
+        .route(
+            "/endpoints/{id}/list",
+            get(dashboard::endpoint_list_partial),
+        )
         .route("/endpoints/{id}/clear", post(dashboard::clear_endpoint))
         .route("/endpoints/{id}/delete", post(dashboard::delete_endpoint))
         .route("/webhooks/view/{id}", get(dashboard::webhook_detail))
-        .route("/webhooks/view/{id}/delete", post(dashboard::delete_webhook))
+        .route(
+            "/webhooks/view/{id}/delete",
+            post(dashboard::delete_webhook),
+        )
         .nest_service("/static", ServeDir::new("static"))
         .layer(
             #[allow(deprecated)]

@@ -22,10 +22,13 @@ pub async fn ingest(
         return Err(AppError::NotFound);
     }
 
-    let received_at_ms = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+    let received_at_ms =
+        (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
     let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (name, value) in headers.iter() {
-        let entry = grouped.entry(name.as_str().to_ascii_lowercase()).or_default();
+        let entry = grouped
+            .entry(name.as_str().to_ascii_lowercase())
+            .or_default();
         let v = match value.to_str() {
             Ok(s) => s.to_string(),
             Err(_) => "<binary>".to_string(),

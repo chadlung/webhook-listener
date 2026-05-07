@@ -24,15 +24,24 @@ impl IntoResponse for AppError {
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             AppError::Database(e) => {
                 tracing::error!(error = %e, "database error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal error".to_string(),
+                )
             }
             AppError::Template(e) => {
                 tracing::error!(error = %e, "template error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal error".to_string(),
+                )
             }
             AppError::Internal(m) => {
                 tracing::error!(message = %m, "internal error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal error".to_string(),
+                )
             }
         };
         (status, msg).into_response()

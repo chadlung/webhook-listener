@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::str::FromStr;
 use std::time::Duration;
 use uuid::Uuid;
@@ -36,15 +36,13 @@ pub async fn create_endpoint(
     let id = Uuid::new_v4();
     let id_str = id.to_string();
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
-    sqlx::query(
-        "INSERT INTO endpoints (id, label, description, created_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&id_str)
-    .bind(label)
-    .bind(description)
-    .bind(now)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO endpoints (id, label, description, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id_str)
+        .bind(label)
+        .bind(description)
+        .bind(now)
+        .execute(pool)
+        .await?;
     Ok(Endpoint {
         id,
         label: label.to_string(),
@@ -55,12 +53,11 @@ pub async fn create_endpoint(
 
 pub async fn get_endpoint(pool: &SqlitePool, id: Uuid) -> Result<Option<Endpoint>, sqlx::Error> {
     let id_str = id.to_string();
-    let row: Option<(String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, label, description, created_at FROM endpoints WHERE id = ?",
-    )
-    .bind(&id_str)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(String, String, String, i64)> =
+        sqlx::query_as("SELECT id, label, description, created_at FROM endpoints WHERE id = ?")
+            .bind(&id_str)
+            .fetch_optional(pool)
+            .await?;
     row.map(|(id, label, description, created_at)| {
         Ok(Endpoint {
             id: Uuid::parse_str(&id).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
@@ -215,14 +212,16 @@ pub async fn list_webhooks_for_endpoint(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, received_at, method, path, source_ip, body_size)| WebhookSummary {
-            id,
-            received_at,
-            method,
-            path,
-            source_ip,
-            body_size,
-        })
+        .map(
+            |(id, received_at, method, path, source_ip, body_size)| WebhookSummary {
+                id,
+                received_at,
+                method,
+                path,
+                source_ip,
+                body_size,
+            },
+        )
         .collect())
 }
 
@@ -236,11 +235,10 @@ pub async fn get_webhook(pool: &SqlitePool, id: i64) -> Result<Option<Webhook>, 
         .bind(id)
         .fetch_optional(pool)
         .await?;
-    row.map(|(id, endpoint_id, received_at, method, path, query, source_ip, headers_json, body, body_size)| {
-        Ok(Webhook {
+    row.map(
+        |(
             id,
-            endpoint_id: Uuid::parse_str(&endpoint_id)
-                .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+            endpoint_id,
             received_at,
             method,
             path,
@@ -249,8 +247,22 @@ pub async fn get_webhook(pool: &SqlitePool, id: i64) -> Result<Option<Webhook>, 
             headers_json,
             body,
             body_size,
-        })
-    })
+        )| {
+            Ok(Webhook {
+                id,
+                endpoint_id: Uuid::parse_str(&endpoint_id)
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                received_at,
+                method,
+                path,
+                query,
+                source_ip,
+                headers_json,
+                body,
+                body_size,
+            })
+        },
+    )
     .transpose()
 }
 
