@@ -6,6 +6,11 @@ use webhook_listener::config::{CliArgs, Config};
 use webhook_listener::state::AppState;
 use webhook_listener::{db, routes};
 
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+    tracing::info!("shutdown signal received");
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -26,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         pool,
         retain_per_endpoint: config.retain_per_endpoint,
+        body_limit_bytes: config.body_limit_bytes,
     });
 
     let app = routes::build_router(state, &config.dashboard_user, &config.dashboard_password);
@@ -40,6 +46,8 @@ async fn main() -> anyhow::Result<()> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+
     Ok(())
 }

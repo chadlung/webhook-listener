@@ -20,6 +20,7 @@ async fn test_state() -> Arc<AppState> {
     Arc::new(AppState {
         pool,
         retain_per_endpoint: 250,
+        body_limit_bytes: 1_048_576,
     })
 }
 
@@ -470,4 +471,27 @@ async fn delete_unknown_webhook_returns_404() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn ingest_body_over_limit_returns_413() {
+    let pool = db::open_pool("sqlite::memory:").await.unwrap();
+    db::run_migrations(&pool).await.unwrap();
+    let small_state = Arc::new(AppState {
+        pool,
+        retain_per_endpoint: 250,
+        body_limit_bytes: 64,
+    });
+    let endpoint = db::create_endpoint(&small_state.pool, "E", "").await.unwrap();
+    let app = build_router(small_state, "u", "p");
+    let big = vec![b'x'; 200];
+    let req = with_connect_info(
+        Request::builder()
+            .method("POST")
+            .uri(format!("/webhooks/{}", endpoint.id))
+            .body(Body::from(big))
+            .unwrap(),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }

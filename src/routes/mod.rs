@@ -5,13 +5,18 @@ use crate::state::AppState;
 use axum::routing::{any, get, post};
 use axum::Router;
 use std::sync::Arc;
+use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 #[allow(deprecated)]
 use tower_http::{
     auth::require_authorization::Basic, validate_request::ValidateRequestHeaderLayer,
 };
 
 pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router {
+    let body_limit = state.body_limit_bytes;
+
     let public = Router::new()
         .route("/webhooks/{endpoint_id}", any(ingest::ingest))
         .with_state(state.clone());
@@ -32,5 +37,9 @@ pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router 
         )
         .with_state(state);
 
-    public.merge(dashboard)
+    public
+        .merge(dashboard)
+        .layer(RequestBodyLimitLayer::new(body_limit))
+        .layer(CatchPanicLayer::new())
+        .layer(TraceLayer::new_for_http())
 }
