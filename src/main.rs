@@ -1,15 +1,10 @@
-mod config;
-mod db;
-mod error;
-mod routes;
-mod state;
-
-use crate::config::{CliArgs, Config};
-use crate::state::AppState;
 use anyhow::Context;
 use clap::Parser;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use webhook_listener::config::{CliArgs, Config};
+use webhook_listener::state::AppState;
+use webhook_listener::{db, routes};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,9 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::open_pool(&config.db_path)
         .await
         .with_context(|| format!("opening database at {}", config.db_path))?;
-    db::run_migrations(&pool)
-        .await
-        .context("running migrations")?;
+    db::run_migrations(&pool).await.context("running migrations")?;
 
     let state = Arc::new(AppState {
         pool,
@@ -48,6 +41,5 @@ async fn main() -> anyhow::Result<()> {
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
-
     Ok(())
 }

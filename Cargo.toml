@@ -22,6 +22,14 @@ thiserror = "2"
 anyhow = "1"
 bytes = "1"
 
+[lib]
+name = "webhook_listener"
+path = "src/lib.rs"
+
+[[bin]]
+name = "webhook-listener"
+path = "src/main.rs"
+
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tower = { version = "0.5", features = ["util"] }
