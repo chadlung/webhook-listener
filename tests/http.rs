@@ -160,3 +160,70 @@ async fn create_endpoint_redirects_to_detail_and_persists() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].label, "GitHub");
 }
+
+#[tokio::test]
+async fn endpoint_detail_renders_full_page() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "Hooks", "").await.unwrap();
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/endpoints/{}", endpoint.id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let s = std::str::from_utf8(&body).unwrap();
+    assert!(s.contains("<!doctype html>"));
+    assert!(s.contains("Hooks"));
+    assert!(s.contains(&endpoint.id.to_string()));
+}
+
+#[tokio::test]
+async fn endpoint_list_partial_returns_rows_only_no_html_doctype() {
+    let state = test_state().await;
+    let endpoint = db::create_endpoint(&state.pool, "Hooks", "").await.unwrap();
+    db::insert_webhook(
+        &state.pool,
+        &db::NewWebhook {
+            endpoint_id: endpoint.id,
+            received_at: 1,
+            method: "POST",
+            path: "/webhooks/x",
+            query: "",
+            source_ip: "1.2.3.4",
+            headers_json: "{}",
+            body: b"hi",
+        },
+        250,
+    )
+    .await
+    .unwrap();
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/endpoints/{}/list", endpoint.id))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let s = std::str::from_utf8(&body).unwrap();
+    assert!(!s.contains("<!doctype"), "partial leaked full layout");
+    assert!(s.contains("<tr>"));
+    assert!(s.contains("1.2.3.4"));
+}
+
+#[tokio::test]
+async fn endpoint_list_partial_for_unknown_endpoint_returns_404() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri(format!("/endpoints/{}/list", uuid::Uuid::new_v4()))
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

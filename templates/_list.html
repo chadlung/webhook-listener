@@ -1,0 +1,19 @@
+{% if rows.is_empty() %}
+  <tr><td colspan="6" class="muted">No webhooks yet.</td></tr>
+{% else %}
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.received_at }}</td>
+    <td>{{ r.method }}</td>
+    <td><a href="/webhooks/view/{{ r.id }}">{{ r.path }}</a></td>
+    <td>{{ r.source_ip }}</td>
+    <td>{{ r.body_size }} B</td>
+    <td>
+      <form class="inline" method="post" action="/webhooks/view/{{ r.id }}/delete"
+            onsubmit="return confirm('Delete this webhook?');">
+        <button type="submit" class="danger">×</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+{% endif %}

@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block title %}{{ endpoint.label }} — Webhook Listener{% endblock %}
+{% block content %}
+
+<p><a href="/">← Back to all endpoints</a></p>
+
+<h2>{{ endpoint.label }}</h2>
+{% if !endpoint.description.is_empty() %}<p class="muted">{{ endpoint.description }}</p>{% endif %}
+<p class="url">{{ base_url }}/webhooks/{{ endpoint.id }}</p>
+
+<form class="inline" method="post" action="/endpoints/{{ endpoint.id }}/clear"
+      onsubmit="return confirm('Delete all webhooks for this endpoint?');">
+  <button type="submit" class="danger">Clear all webhooks</button>
+</form>
+
+<h3>Recent webhooks (most recent 250)</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Received</th><th>Method</th><th>Path</th><th>From</th><th>Size</th><th></th>
+    </tr>
+  </thead>
+  <tbody hx-get="/endpoints/{{ endpoint.id }}/list"
+         hx-trigger="every 5s"
+         hx-swap="innerHTML">
+    {% include "_list.html" %}
+  </tbody>
+</table>
+
+{% endblock %}

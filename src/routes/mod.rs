@@ -19,6 +19,9 @@ pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router 
     let dashboard = Router::new()
         .route("/", get(dashboard::index))
         .route("/endpoints", post(dashboard::create_endpoint))
+        .route("/endpoints/{id}", get(dashboard::endpoint_detail))
+        .route("/endpoints/{id}/list", get(dashboard::endpoint_list_partial))
+        .route("/endpoints/{id}/clear", post(dashboard::clear_endpoint))
         .route("/endpoints/{id}/delete", post(dashboard::delete_endpoint))
         .nest_service("/static", ServeDir::new("static"))
         .layer(
