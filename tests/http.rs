@@ -92,3 +92,71 @@ async fn ingest_accepts_get_method_too() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].method, "GET");
 }
+
+// --- Dashboard tests ---
+
+fn auth_header(user: &str, pass: &str) -> String {
+    use base64::{engine::general_purpose, Engine as _};
+    let raw = format!("{user}:{pass}");
+    format!("Basic {}", general_purpose::STANDARD.encode(raw))
+}
+
+#[tokio::test]
+async fn dashboard_index_without_auth_returns_401() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert!(resp.headers().contains_key("www-authenticate"));
+}
+
+#[tokio::test]
+async fn dashboard_index_with_bad_password_returns_401() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri("/")
+        .header("authorization", auth_header("u", "wrong"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn dashboard_index_with_auth_returns_html() {
+    let state = test_state().await;
+    let app = build_router(state, "u", "p");
+    let req = Request::builder()
+        .uri("/")
+        .header("authorization", auth_header("u", "p"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let body_str = std::str::from_utf8(&body).unwrap();
+    assert!(body_str.contains("Webhook Listener"));
+    assert!(body_str.contains("Create endpoint"));
+}
+
+#[tokio::test]
+async fn create_endpoint_redirects_to_detail_and_persists() {
+    let state = test_state().await;
+    let app = build_router(state.clone(), "u", "p");
+    let req = Request::builder()
+        .method("POST")
+        .uri("/endpoints")
+        .header("authorization", auth_header("u", "p"))
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from("label=GitHub&description=PRs"))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status().is_redirection(), "got {}", resp.status());
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    assert!(location.starts_with("/endpoints/"), "{location}");
+    let list = db::list_endpoints(&state.pool).await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].label, "GitHub");
+}

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Webhook Listener{% endblock %}</title>
+<link rel="stylesheet" href="/static/styles.css">
+<script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header>
+<h1><a href="/">Webhook Listener</a></h1>
+<span class="muted">{% block header_extra %}{% endblock %}</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
