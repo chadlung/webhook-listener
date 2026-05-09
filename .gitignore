@@ -1,4 +1,23 @@
+# Rust
 /target
+
+# SQLite databases (runtime data)
 *.db
 *.db-shm
 *.db-wal
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Cargo
+Cargo.lock~
