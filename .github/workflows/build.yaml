@@ -43,10 +43,35 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Rename binary with target suffix
+        run: |
+          cp target/${{ matrix.target }}/release/webhook-listener \
+             webhook-listener-${{ matrix.target }}
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: webhook-listener-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/webhook-listener
+          path: webhook-listener-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
