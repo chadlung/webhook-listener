@@ -3,6 +3,8 @@ pub mod ingest;
 
 use crate::state::AppState;
 use axum::Router;
+use axum::http::header;
+use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use std::sync::Arc;
 use tower_http::catch_panic::CatchPanicLayer;
@@ -14,10 +16,15 @@ use tower_http::{
     auth::require_authorization::Basic, validate_request::ValidateRequestHeaderLayer,
 };
 
+async fn health() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/plain")], "ok")
+}
+
 pub fn build_router(state: Arc<AppState>, user: &str, password: &str) -> Router {
     let body_limit = state.body_limit_bytes;
 
     let public = Router::new()
+        .route("/health", get(health))
         .route("/webhooks/{endpoint_id}", any(ingest::ingest))
         .with_state(state.clone());
 
