@@ -1,17 +1,17 @@
 {% if rows.is_empty() %}
-  <tr><td colspan="6" class="muted">No webhooks yet.</td></tr>
+  <tr><td colspan="6"><div class="empty" style="padding:2rem 1rem"><p>No webhooks yet — send a request to this endpoint to see it here.</p></div></td></tr>
 {% else %}
   {% for r in rows %}
   <tr>
-    <td>{{ r.received_at }}</td>
-    <td>{{ r.method }}</td>
-    <td><a href="/webhooks/view/{{ r.id }}">{{ r.path }}</a></td>
-    <td>{{ r.source_ip }}</td>
-    <td>{{ r.body_size }} B</td>
+    <td class="mono">{{ r.received_at }}</td>
+    <td><span class="method" data-m="{{ r.method }}">{{ r.method }}</span></td>
+    <td class="path"><a href="/webhooks/view/{{ r.id }}">{{ r.path }}</a></td>
+    <td class="mono">{{ r.source_ip }}</td>
+    <td class="mono">{{ r.body_size }} B</td>
     <td>
       <form class="inline" method="post" action="/webhooks/view/{{ r.id }}/delete"
             onsubmit="return confirm('Delete this webhook?');">
-        <button type="submit" class="danger">×</button>
+        <button type="submit" class="danger sm">×</button>
       </form>
     </td>
   </tr>

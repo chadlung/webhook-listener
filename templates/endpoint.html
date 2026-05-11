@@ -2,30 +2,46 @@
 {% block title %}{{ endpoint.label }} — Webhook Listener{% endblock %}
 {% block content %}
 
-<p><a href="/">← Back to all endpoints</a></p>
+<a class="back-link" href="/">All endpoints</a>
 
-<h2>{{ endpoint.label }}</h2>
-{% if !endpoint.description.is_empty() %}<p class="muted">{{ endpoint.description }}</p>{% endif %}
-<p class="url">{{ base_url }}/webhooks/{{ endpoint.id }}</p>
+<div class="page-title-row">
+  <div>
+    <h2>{{ endpoint.label }}</h2>
+    {% if !endpoint.description.is_empty() %}
+    <div class="muted" style="margin-top:.25rem">{{ endpoint.description }}</div>
+    {% endif %}
+  </div>
+  <form class="inline" method="post" action="/endpoints/{{ endpoint.id }}/clear"
+        onsubmit="return confirm('Delete all webhooks for this endpoint?');">
+    <button type="submit" class="danger">Clear all webhooks</button>
+  </form>
+</div>
 
-<form class="inline" method="post" action="/endpoints/{{ endpoint.id }}/clear"
-      onsubmit="return confirm('Delete all webhooks for this endpoint?');">
-  <button type="submit" class="danger">Clear all webhooks</button>
-</form>
+<div class="card" style="padding:1rem 1.25rem">
+  <div class="card-title">Webhook URL</div>
+  <div class="url">{{ base_url }}/webhooks/{{ endpoint.id }}</div>
+</div>
 
-<h3>Recent webhooks (most recent 250)</h3>
+<h3>Recent webhooks</h3>
 
-<table>
-  <thead>
-    <tr>
-      <th>Received</th><th>Method</th><th>Path</th><th>From</th><th>Size</th><th></th>
-    </tr>
-  </thead>
-  <tbody hx-get="/endpoints/{{ endpoint.id }}/list"
-         hx-trigger="every 5s"
-         hx-swap="innerHTML">
-    {% include "_list.html" %}
-  </tbody>
-</table>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Received</th>
+        <th>Method</th>
+        <th>Path</th>
+        <th>From</th>
+        <th>Size</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody hx-get="/endpoints/{{ endpoint.id }}/list"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+      {% include "_list.html" %}
+    </tbody>
+  </table>
+</div>
 
 {% endblock %}

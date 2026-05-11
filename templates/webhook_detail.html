@@ -2,44 +2,54 @@
 {% block title %}Webhook #{{ webhook_id }} — Webhook Listener{% endblock %}
 {% block content %}
 
-<p><a href="/endpoints/{{ endpoint_id }}">← Back to {{ endpoint_label }}</a></p>
+<a class="back-link" href="/endpoints/{{ endpoint_id }}">{{ endpoint_label }}</a>
 
-<h2>Webhook #{{ webhook_id }}</h2>
+<div class="page-title-row">
+  <h2>Webhook <span class="muted">#{{ webhook_id }}</span></h2>
+  <form class="inline" method="post" action="/webhooks/view/{{ webhook_id }}/delete"
+        onsubmit="return confirm('Delete this webhook?');">
+    <button type="submit" class="danger">Delete</button>
+  </form>
+</div>
 
-<dl class="kv">
-  <dt>Received</dt><dd>{{ received_at }}</dd>
-  <dt>Method</dt><dd>{{ method }}</dd>
-  <dt>Path</dt><dd>{{ path }}</dd>
-  <dt>Query</dt><dd>{% if query.is_empty() %}<span class="muted">(none)</span>{% else %}{{ query }}{% endif %}</dd>
-  <dt>Source IP</dt><dd>{{ source_ip }}</dd>
-  <dt>Body size</dt><dd>{{ body_size }} bytes</dd>
-</dl>
-
-<h3>Headers</h3>
-{% if headers.is_empty() %}
-  <p class="muted">(none)</p>
-{% else %}
+<div class="card">
+  <div class="card-title">Request details</div>
   <dl class="kv">
-  {% for h in headers %}
-    <dt>{{ h.0 }}</dt><dd>{{ h.1 }}</dd>
-  {% endfor %}
+    <dt>Received</dt><dd>{{ received_at }}</dd>
+    <dt>Method</dt>
+    <dd><span class="method" data-m="{{ method }}">{{ method }}</span></dd>
+    <dt>Path</dt><dd>{{ path }}</dd>
+    <dt>Query</dt>
+    <dd>{% if query.is_empty() %}<span class="muted">(none)</span>{% else %}{{ query }}{% endif %}</dd>
+    <dt>Source IP</dt><dd>{{ source_ip }}</dd>
+    <dt>Body size</dt><dd>{{ body_size }} bytes</dd>
   </dl>
-{% endif %}
+</div>
 
-<h3>Body — {{ body.label }}</h3>
-{% match body.pretty %}
-{% when Some with (s) %}<pre class="body">{{ s }}</pre>
-{% when None %}{% endmatch %}
-{% match body.text %}
-{% when Some with (s) %}<pre class="body">{{ s }}</pre>
-{% when None %}{% endmatch %}
-{% match body.hex %}
-{% when Some with (s) %}<pre class="body">{{ s }}</pre>
-{% when None %}{% endmatch %}
+<div class="card">
+  <div class="card-title">Headers</div>
+  {% if headers.is_empty() %}
+    <p class="muted">(none)</p>
+  {% else %}
+    <dl class="kv">
+    {% for h in headers %}
+      <dt>{{ h.0 }}</dt><dd>{{ h.1 }}</dd>
+    {% endfor %}
+    </dl>
+  {% endif %}
+</div>
 
-<form class="inline" method="post" action="/webhooks/view/{{ webhook_id }}/delete"
-      onsubmit="return confirm('Delete this webhook?');">
-  <button type="submit" class="danger">Delete this webhook</button>
-</form>
+<div class="card">
+  <div class="card-title">Body — {{ body.label }}</div>
+  {% match body.pretty %}
+  {% when Some with (s) %}<pre class="body">{{ s }}</pre>
+  {% when None %}{% endmatch %}
+  {% match body.text %}
+  {% when Some with (s) %}<pre class="body">{{ s }}</pre>
+  {% when None %}{% endmatch %}
+  {% match body.hex %}
+  {% when Some with (s) %}<pre class="body">{{ s }}</pre>
+  {% when None %}{% endmatch %}
+</div>
 
 {% endblock %}
