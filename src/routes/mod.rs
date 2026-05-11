@@ -12,11 +12,25 @@ use axum_extra::extract::CookieJar;
 use std::sync::Arc;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::limit::RequestBodyLimitLayer;
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
+
+
+const STYLES_CSS: &str = include_str!("../../static/styles.css");
+const HTMX_JS: &str = include_str!("../../static/htmx.min.js");
 
 async fn health() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/plain")], "ok")
+}
+
+async fn serve_styles() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], STYLES_CSS)
+}
+
+async fn serve_htmx() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        HTMX_JS,
+    )
 }
 
 async fn require_session(
@@ -56,7 +70,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/endpoints/{id}/delete", post(dashboard::delete_endpoint))
         .route("/webhooks/view/{id}", get(dashboard::webhook_detail))
         .route("/webhooks/view/{id}/delete", post(dashboard::delete_webhook))
-        .nest_service("/static", ServeDir::new("static"))
+        .route("/static/styles.css", get(serve_styles))
+        .route("/static/htmx.min.js", get(serve_htmx))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session,
