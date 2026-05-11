@@ -30,13 +30,17 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("running migrations")?;
 
+    let session_token = uuid::Uuid::new_v4().to_string();
     let state = Arc::new(AppState {
         pool,
         retain_per_endpoint: config.retain_per_endpoint,
         body_limit_bytes: config.body_limit_bytes,
+        session_token,
+        dashboard_user: config.dashboard_user.clone(),
+        dashboard_password: config.dashboard_password.clone(),
     });
 
-    let app = routes::build_router(state, &config.dashboard_user, &config.dashboard_password);
+    let app = routes::build_router(state);
 
     let addr: SocketAddr = config
         .bind

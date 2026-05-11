@@ -1,13 +1,15 @@
 [package]
 name = "webhook-listener"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
 axum = "0.8"
+axum-extra = { version = "0.10", features = ["cookie"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "limit", "auth", "fs", "catch-panic"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "fs", "catch-panic"] }
+base64 = "0.22"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate"] }
 askama = "0.12"
 serde = { version = "1", features = ["derive"] }
