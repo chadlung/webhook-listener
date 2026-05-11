@@ -2,41 +2,57 @@
 {% block title %}Endpoints — Webhook Listener{% endblock %}
 {% block content %}
 
-<section>
-  <h2>Create endpoint</h2>
-  <form method="post" action="/endpoints">
-    <p><label>Label<br><input type="text" name="label" required></label></p>
-    <p><label>Description (optional)<br><input type="text" name="description"></label></p>
-    <p><button type="submit">Create</button></p>
-  </form>
-</section>
+<div class="page-title-row">
+  <h2>Endpoints</h2>
+</div>
 
-<section>
-  <h2>Endpoints ({{ endpoints.len() }})</h2>
-  {% if endpoints.is_empty() %}
-    <p class="muted">No endpoints yet. Create one above to get a webhook URL.</p>
-  {% else %}
-    {% for e in endpoints %}
-    <div class="endpoint-card">
-      <div class="actions">
-        <form class="inline" method="post" action="/endpoints/{{ e.id }}/delete"
-              onsubmit="return confirm('Delete endpoint and all its webhooks?');">
-          <button type="submit" class="danger">Delete</button>
-        </form>
-      </div>
-      <div><strong><a href="/endpoints/{{ e.id }}">{{ e.label }}</a></strong></div>
-      <div><span class="url">{{ base_url }}/webhooks/{{ e.id }}</span></div>
-      {% if !e.description.is_empty() %}<div class="muted">{{ e.description }}</div>{% endif %}
-      <div class="muted">
-        {{ e.webhook_count }} webhooks
+<div class="card">
+  <div class="card-title">New endpoint</div>
+  <form method="post" action="/endpoints">
+    <div class="form-row">
+      <label for="label">Label</label>
+      <input id="label" type="text" name="label" placeholder="e.g. GitHub PRs" required>
+    </div>
+    <div class="form-row">
+      <label for="description">Description <span class="muted">(optional)</span></label>
+      <input id="description" type="text" name="description" placeholder="What webhooks will this receive?">
+    </div>
+    <button class="primary" type="submit">Create endpoint</button>
+  </form>
+</div>
+
+{% if endpoints.is_empty() %}
+<div class="empty">
+  <p>No endpoints yet — create one above to get a webhook URL.</p>
+</div>
+{% else %}
+<div class="endpoint-list">
+  {% for e in endpoints %}
+  <div class="endpoint-item">
+    <div style="min-width:0;flex:1">
+      <div class="endpoint-name"><a href="/endpoints/{{ e.id }}">{{ e.label }}</a></div>
+      {% if !e.description.is_empty() %}
+      <div class="endpoint-desc">{{ e.description }}</div>
+      {% endif %}
+      <div class="url">{{ base_url }}/webhooks/{{ e.id }}</div>
+      <div class="endpoint-meta">
+        <span class="count-badge">{{ e.webhook_count }} webhooks</span>
         {% match e.last_received_at %}
-        {% when Some with (ts) %} · last {{ ts }}
-        {% when None %}
-        {% endmatch %}
+        {% when Some with (ts) %}
+        <span class="dot">·</span>
+        <span class="muted">last {{ ts }}</span>
+        {% when None %}{% endmatch %}
       </div>
     </div>
-    {% endfor %}
-  {% endif %}
-</section>
+    <div class="endpoint-actions">
+      <form class="inline" method="post" action="/endpoints/{{ e.id }}/delete"
+            onsubmit="return confirm('Delete endpoint and all its webhooks?');">
+        <button type="submit" class="danger sm">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {% endblock %}
