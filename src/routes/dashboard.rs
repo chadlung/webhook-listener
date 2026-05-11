@@ -5,6 +5,8 @@ use askama::Template;
 use axum::extract::{Form, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -321,4 +323,46 @@ pub async fn delete_webhook(
         Some(endpoint_id) => Ok(Redirect::to(&format!("/endpoints/{endpoint_id}"))),
         None => Err(AppError::NotFound),
     }
+}
+
+#[derive(Template)]
+#[template(path = "login.html")]
+struct LoginTemplate {
+    error: bool,
+}
+
+pub async fn login_page() -> Result<Response, AppError> {
+    render(LoginTemplate { error: false })
+}
+
+#[derive(Deserialize)]
+pub struct LoginForm {
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn login_post(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Form(form): Form<LoginForm>,
+) -> impl IntoResponse {
+    if form.username == state.dashboard_user && form.password == state.dashboard_password {
+        let cookie = Cookie::build(("session", state.session_token.clone()))
+            .http_only(true)
+            .same_site(SameSite::Lax)
+            .path("/")
+            .build();
+        (jar.add(cookie), Redirect::to("/")).into_response()
+    } else {
+        render(LoginTemplate { error: true })
+            .unwrap_or_else(|e| e.into_response())
+    }
+}
+
+pub async fn logout(jar: CookieJar) -> impl IntoResponse {
+    let cookie = Cookie::build(("session", ""))
+        .path("/")
+        .max_age(time::Duration::seconds(0))
+        .build();
+    (jar.add(cookie), Redirect::to("/login")).into_response()
 }
