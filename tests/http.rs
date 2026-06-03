@@ -8,6 +8,9 @@ use webhook_listener::db;
 use webhook_listener::routes::build_router;
 use webhook_listener::state::AppState;
 
+const SESSION_TOKEN: &str = "test-session-token";
+const SESSION_COOKIE: &str = "session=test-session-token";
+
 fn with_connect_info(mut req: Request<Body>) -> Request<Body> {
     let addr: SocketAddr = "127.0.0.1:54321".parse().unwrap();
     req.extensions_mut().insert(ConnectInfo(addr));
@@ -21,6 +24,9 @@ async fn test_state() -> Arc<AppState> {
         pool,
         retain_per_endpoint: 250,
         body_limit_bytes: 1_048_576,
+        session_token: SESSION_TOKEN.to_string(),
+        dashboard_user: "u".to_string(),
+        dashboard_password: "p".to_string(),
     })
 }
 
@@ -28,7 +34,7 @@ async fn test_state() -> Arc<AppState> {
 async fn ingest_post_to_existing_endpoint_stores_webhook() {
     let state = test_state().await;
     let endpoint = db::create_endpoint(&state.pool, "Test", "").await.unwrap();
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
 
     let req = with_connect_info(
         Request::builder()
@@ -64,7 +70,7 @@ async fn ingest_post_to_existing_endpoint_stores_webhook() {
 #[tokio::test]
 async fn ingest_to_unknown_endpoint_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = with_connect_info(
         Request::builder()
             .method("POST")
@@ -80,7 +86,7 @@ async fn ingest_to_unknown_endpoint_returns_404() {
 async fn ingest_accepts_get_method_too() {
     let state = test_state().await;
     let endpoint = db::create_endpoint(&state.pool, "Test", "").await.unwrap();
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
     let req = with_connect_info(
         Request::builder()
             .method("GET")
@@ -97,44 +103,45 @@ async fn ingest_accepts_get_method_too() {
     assert_eq!(list[0].method, "GET");
 }
 
-// --- Dashboard tests ---
-
-fn auth_header(user: &str, pass: &str) -> String {
-    use base64::{Engine as _, engine::general_purpose};
-    let raw = format!("{user}:{pass}");
-    format!("Basic {}", general_purpose::STANDARD.encode(raw))
-}
+// --- Dashboard auth (session-cookie based) ---
 
 #[tokio::test]
-async fn dashboard_index_without_auth_returns_401() {
+async fn dashboard_index_without_session_redirects_to_login() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder().uri("/").body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-    assert!(resp.headers().contains_key("www-authenticate"));
+    assert!(resp.status().is_redirection(), "got {}", resp.status());
+    assert_eq!(
+        resp.headers().get("location").unwrap().to_str().unwrap(),
+        "/login"
+    );
 }
 
 #[tokio::test]
-async fn dashboard_index_with_bad_password_returns_401() {
+async fn dashboard_index_with_invalid_session_redirects_to_login() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri("/")
-        .header("authorization", auth_header("u", "wrong"))
+        .header("cookie", "session=wrong")
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert!(resp.status().is_redirection(), "got {}", resp.status());
+    assert_eq!(
+        resp.headers().get("location").unwrap().to_str().unwrap(),
+        "/login"
+    );
 }
 
 #[tokio::test]
-async fn dashboard_index_with_auth_returns_html() {
+async fn dashboard_index_with_valid_session_returns_html() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri("/")
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -146,13 +153,65 @@ async fn dashboard_index_with_auth_returns_html() {
 }
 
 #[tokio::test]
+async fn login_with_correct_credentials_sets_session_cookie() {
+    let state = test_state().await;
+    let app = build_router(state);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/login")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from("username=u&password=p"))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status().is_redirection(), "got {}", resp.status());
+    assert_eq!(
+        resp.headers().get("location").unwrap().to_str().unwrap(),
+        "/"
+    );
+    let set_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        set_cookie.contains(&format!("session={SESSION_TOKEN}")),
+        "expected session cookie, got: {set_cookie}"
+    );
+}
+
+#[tokio::test]
+async fn login_with_wrong_credentials_does_not_set_session_cookie() {
+    let state = test_state().await;
+    let app = build_router(state);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/login")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from("username=u&password=wrong"))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    // Login page is re-rendered (200) without a valid session cookie.
+    assert_eq!(resp.status(), StatusCode::OK);
+    let has_session = resp
+        .headers()
+        .get("set-cookie")
+        .and_then(|v| v.to_str().ok())
+        .map(|c| c.contains(&format!("session={SESSION_TOKEN}")))
+        .unwrap_or(false);
+    assert!(!has_session, "wrong credentials must not set a valid session");
+}
+
+// --- Dashboard routes (authenticated via session cookie) ---
+
+#[tokio::test]
 async fn create_endpoint_redirects_to_detail_and_persists() {
     let state = test_state().await;
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
     let req = Request::builder()
         .method("POST")
         .uri("/endpoints")
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::from("label=GitHub&description=PRs"))
         .unwrap();
@@ -169,10 +228,10 @@ async fn create_endpoint_redirects_to_detail_and_persists() {
 async fn endpoint_detail_renders_full_page() {
     let state = test_state().await;
     let endpoint = db::create_endpoint(&state.pool, "Hooks", "").await.unwrap();
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/endpoints/{}", endpoint.id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -204,10 +263,10 @@ async fn endpoint_list_partial_returns_rows_only_no_html_doctype() {
     )
     .await
     .unwrap();
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/endpoints/{}/list", endpoint.id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -222,10 +281,10 @@ async fn endpoint_list_partial_returns_rows_only_no_html_doctype() {
 #[tokio::test]
 async fn endpoint_list_partial_for_unknown_endpoint_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/endpoints/{}/list", uuid::Uuid::new_v4()))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -252,11 +311,11 @@ async fn clear_endpoint_keeps_endpoint_drops_webhooks() {
     )
     .await
     .unwrap();
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
     let req = Request::builder()
         .method("POST")
         .uri(format!("/endpoints/{}/clear", endpoint.id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -293,11 +352,11 @@ async fn delete_endpoint_removes_endpoint_and_webhooks_via_cascade() {
     )
     .await
     .unwrap();
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
     let req = Request::builder()
         .method("POST")
         .uri(format!("/endpoints/{}/delete", endpoint.id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -334,10 +393,10 @@ async fn webhook_detail_renders_with_pretty_json_body() {
     )
     .await
     .unwrap();
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/webhooks/view/{}", id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -373,10 +432,10 @@ async fn webhook_detail_falls_back_to_hex_for_non_utf8_body() {
     )
     .await
     .unwrap();
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/webhooks/view/{}", id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -390,10 +449,10 @@ async fn webhook_detail_falls_back_to_hex_for_non_utf8_body() {
 #[tokio::test]
 async fn webhook_detail_for_unknown_id_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri("/webhooks/view/999999")
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -420,10 +479,10 @@ async fn webhook_detail_escapes_html_in_body() {
     )
     .await
     .unwrap();
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .uri(format!("/webhooks/view/{}", id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -458,11 +517,11 @@ async fn delete_single_webhook_redirects_to_endpoint_detail() {
     )
     .await
     .unwrap();
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
     let req = Request::builder()
         .method("POST")
         .uri(format!("/webhooks/view/{}/delete", id))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -478,11 +537,11 @@ async fn delete_single_webhook_redirects_to_endpoint_detail() {
 #[tokio::test]
 async fn delete_unknown_webhook_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .method("POST")
         .uri("/webhooks/view/999999/delete")
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -497,11 +556,14 @@ async fn ingest_body_over_limit_returns_413() {
         pool,
         retain_per_endpoint: 250,
         body_limit_bytes: 64,
+        session_token: SESSION_TOKEN.to_string(),
+        dashboard_user: "u".to_string(),
+        dashboard_password: "p".to_string(),
     });
     let endpoint = db::create_endpoint(&small_state.pool, "E", "")
         .await
         .unwrap();
-    let app = build_router(small_state, "u", "p");
+    let app = build_router(small_state);
     let big = vec![b'x'; 200];
     let req = with_connect_info(
         Request::builder()
@@ -517,11 +579,11 @@ async fn ingest_body_over_limit_returns_413() {
 #[tokio::test]
 async fn clear_unknown_endpoint_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .method("POST")
         .uri(format!("/endpoints/{}/clear", uuid::Uuid::new_v4()))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -531,11 +593,11 @@ async fn clear_unknown_endpoint_returns_404() {
 #[tokio::test]
 async fn delete_unknown_endpoint_returns_404() {
     let state = test_state().await;
-    let app = build_router(state, "u", "p");
+    let app = build_router(state);
     let req = Request::builder()
         .method("POST")
         .uri(format!("/endpoints/{}/delete", uuid::Uuid::new_v4()))
-        .header("authorization", auth_header("u", "p"))
+        .header("cookie", SESSION_COOKIE)
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();

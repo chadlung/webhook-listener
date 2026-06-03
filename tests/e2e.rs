@@ -13,8 +13,11 @@ async fn end_to_end_create_endpoint_send_webhook_observe_in_list() {
         pool,
         retain_per_endpoint: 250,
         body_limit_bytes: 1_048_576,
+        session_token: "e2e-session-token".to_string(),
+        dashboard_user: "u".to_string(),
+        dashboard_password: "p".to_string(),
     });
-    let app = build_router(state.clone(), "u", "p");
+    let app = build_router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -36,10 +39,28 @@ async fn end_to_end_create_endpoint_send_webhook_observe_in_list() {
         .unwrap();
     let base = format!("http://{addr}");
 
-    // 1. Create endpoint via dashboard form (with auth).
+    // 1. Log in via the dashboard form to obtain a session cookie.
+    let resp = client
+        .post(format!("{base}/login"))
+        .form(&[("username", "u"), ("password", "p")])
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_redirection(), "login got {}", resp.status());
+    let set_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .expect("login should set a session cookie")
+        .to_str()
+        .unwrap();
+    // Keep only the "session=<token>" name=value pair (drop attributes).
+    let session_cookie = set_cookie.split(';').next().unwrap().to_string();
+    assert!(session_cookie.starts_with("session="), "{session_cookie}");
+
+    // 2. Create endpoint via dashboard form (authenticated with the session cookie).
     let resp = client
         .post(format!("{base}/endpoints"))
-        .basic_auth("u", Some("p"))
+        .header("cookie", &session_cookie)
         .form(&[("label", "E2E"), ("description", "test")])
         .send()
         .await
@@ -48,7 +69,7 @@ async fn end_to_end_create_endpoint_send_webhook_observe_in_list() {
     let location = resp.headers().get("location").unwrap().to_str().unwrap();
     let id = location.trim_start_matches("/endpoints/").to_string();
 
-    // 2. Send a webhook (no auth).
+    // 3. Send a webhook (no auth required on the ingest endpoint).
     let resp = client
         .post(format!("{base}/webhooks/{id}?run=42"))
         .header("X-Custom", "hello")
@@ -58,13 +79,13 @@ async fn end_to_end_create_endpoint_send_webhook_observe_in_list() {
         .unwrap();
     assert!(resp.status().is_success(), "got {}", resp.status());
 
-    // 3. Poll the partial endpoint until the row appears.
+    // 4. Poll the partial endpoint until the row appears.
     let partial_url = format!("{base}/endpoints/{id}/list");
     let mut found = false;
     for _ in 0..20 {
         let r = client
             .get(&partial_url)
-            .basic_auth("u", Some("p"))
+            .header("cookie", &session_cookie)
             .send()
             .await
             .unwrap();

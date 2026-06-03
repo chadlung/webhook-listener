@@ -90,7 +90,7 @@ pub async fn index(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("localhost")
         .to_string();
-    let base_url = format!("http://{host}");
+    let base_url = format!("https://{host}");
     render(IndexTemplate {
         endpoints,
         base_url,
@@ -153,7 +153,7 @@ pub async fn endpoint_detail(
     let host = host_from_headers(&headers);
     render(EndpointPageTemplate {
         endpoint,
-        base_url: format!("http://{host}"),
+        base_url: format!("https://{host}"),
         rows: rows(summaries),
     })
 }
