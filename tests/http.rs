@@ -68,7 +68,8 @@ async fn ingest_post_to_existing_endpoint_stores_webhook() {
 }
 
 #[tokio::test]
-async fn ingest_to_unknown_endpoint_returns_404() {
+async fn ingest_to_unknown_endpoint_returns_200() {
+    // Test-app behavior: the NotFound (404) is rewritten to 200.
     let state = test_state().await;
     let app = build_router(state);
     let req = with_connect_info(
@@ -79,7 +80,20 @@ async fn ingest_to_unknown_endpoint_returns_404() {
             .unwrap(),
     );
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn unmatched_route_returns_200() {
+    // Unknown paths hit the ok_fallback instead of returning 404.
+    let state = test_state().await;
+    let app = build_router(state);
+    let req = Request::builder()
+        .uri("/no/such/path/here")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -279,7 +293,7 @@ async fn endpoint_list_partial_returns_rows_only_no_html_doctype() {
 }
 
 #[tokio::test]
-async fn endpoint_list_partial_for_unknown_endpoint_returns_404() {
+async fn endpoint_list_partial_for_unknown_endpoint_returns_200() {
     let state = test_state().await;
     let app = build_router(state);
     let req = Request::builder()
@@ -288,7 +302,7 @@ async fn endpoint_list_partial_for_unknown_endpoint_returns_404() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -447,7 +461,7 @@ async fn webhook_detail_falls_back_to_hex_for_non_utf8_body() {
 }
 
 #[tokio::test]
-async fn webhook_detail_for_unknown_id_returns_404() {
+async fn webhook_detail_for_unknown_id_returns_200() {
     let state = test_state().await;
     let app = build_router(state);
     let req = Request::builder()
@@ -456,7 +470,7 @@ async fn webhook_detail_for_unknown_id_returns_404() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -535,7 +549,7 @@ async fn delete_single_webhook_redirects_to_endpoint_detail() {
 }
 
 #[tokio::test]
-async fn delete_unknown_webhook_returns_404() {
+async fn delete_unknown_webhook_returns_200() {
     let state = test_state().await;
     let app = build_router(state);
     let req = Request::builder()
@@ -545,11 +559,11 @@ async fn delete_unknown_webhook_returns_404() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn ingest_body_over_limit_returns_413() {
+async fn ingest_body_over_limit_returns_200() {
     let pool = db::open_pool("sqlite::memory:").await.unwrap();
     db::run_migrations(&pool).await.unwrap();
     let small_state = Arc::new(AppState {
@@ -573,11 +587,12 @@ async fn ingest_body_over_limit_returns_413() {
             .unwrap(),
     );
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    // Body-limit 413 is rewritten to 200 by force_ok_on_errors.
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn clear_unknown_endpoint_returns_404() {
+async fn clear_unknown_endpoint_returns_200() {
     let state = test_state().await;
     let app = build_router(state);
     let req = Request::builder()
@@ -587,11 +602,11 @@ async fn clear_unknown_endpoint_returns_404() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn delete_unknown_endpoint_returns_404() {
+async fn delete_unknown_endpoint_returns_200() {
     let state = test_state().await;
     let app = build_router(state);
     let req = Request::builder()
@@ -601,5 +616,5 @@ async fn delete_unknown_endpoint_returns_404() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
